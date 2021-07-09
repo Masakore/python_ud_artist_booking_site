@@ -5,13 +5,13 @@
 import dateutil.parser
 import babel
 import sys
-from flask import Flask, render_template, request, Response, flash, redirect, url_for, jsonify, abort
+from flask import Flask, render_template, request, flash, redirect, url_for
 from flask_moment import Moment
-from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 import logging
 from logging import Formatter, FileHandler
 from forms import *
+from models import db, Artist, Show, Venue
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -19,62 +19,9 @@ from forms import *
 app = Flask(__name__)
 moment = Moment(app)
 app.config.from_object('config')
-db = SQLAlchemy(app)
+db.init_app(app)
 
 migrate = Migrate(app, db)
-
-#----------------------------------------------------------------------------#
-# Models.
-#----------------------------------------------------------------------------#
-
-class Venue(db.Model):
-    __tablename__ = 'Venue'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    city = db.Column(db.String(120))
-    state = db.Column(db.String(120))
-    address = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
-    genres = db.Column(db.ARRAY(db.String), nullable=False) 
-    facebook_link = db.Column(db.String(120))
-    image_link = db.Column(db.String(500))
-    website = db.Column(db.String(120))
-    seeking_talent = db.Column(db.BOOLEAN, nullable=False)
-    seeking_description = db.Column(db.Text)
-    shows = db.relationship("Show", backref=db.backref('venue', lazy="joined")) #backref makes the relationship bidirectional
-
-    def __repr__(self):
-      return f'<Venue {self.id} {self.name} >'
-
-class Artist(db.Model):
-    __tablename__ = 'Artist'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    city = db.Column(db.String(120))
-    state = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
-    genres = db.Column(db.ARRAY(db.String), nullable=False) 
-    image_link = db.Column(db.String(500))
-    facebook_link = db.Column(db.String(120))
-    website = db.Column(db.String(120))
-    seeking_venue = db.Column(db.BOOLEAN, nullable=False)
-    seeking_description = db.Column(db.Text)
-    shows = db.relationship('Show', backref=db.backref('artist'), lazy="joined") #joined eager loading
-
-    def __repr__(self):
-      return f'<Artist {self.id} {self.name}>'
-
-class Show(db.Model):
-    __tablename__ = 'Show'
-
-    venue_id = db.Column(db.Integer, db.ForeignKey('Venue.id'), primary_key=True)
-    artist_id = db.Column(db.Integer, db.ForeignKey('Artist.id'), primary_key=True)
-    start_time = db.Column(db.DateTime, nullable=False)
-
-    def __repr__(self):
-      return f'<Show {self.venue_id} {self.artist_id} {self.start_time}>'
 
 #----------------------------------------------------------------------------#
 # Filters.
@@ -166,20 +113,24 @@ def show_venue(venue_id):
     "upcoming_shows_count": 0,
   }
 
-  for show in venue.shows:
+  shows = db.session.query(Show).join(Venue).all()
+
+  for show in shows:
+    artist = db.session.query(Artist).get(show.artist_id)
+
     if (show.start_time > datetime.now()):
       data['upcoming_shows'].append({
-        "artist_id": show.artist_id,
-        "artist_name": show.artist.name,
-        "artist_image_link": show.artist.image_link,
+        "artist_id": artist.id,
+        "artist_name": artist.name,
+        "artist_image_link": artist.image_link,
         "start_time": format(show.start_time)
       })
       data['upcoming_shows_count'] += 1
     else:
       data['past_shows'].append({
-        "artist_id": show.artist_id,
-        "artist_name": show.artist.name,
-        "artist_image_link": show.artist.image_link,
+        "artist_id": artist.id,
+        "artist_name": artist.name,
+        "artist_image_link": artist.image_link,
         "start_time": format(show.start_time)
       })
       data['past_shows_count'] += 1
@@ -299,21 +250,23 @@ def show_artist(artist_id):
     "past_shows_count": 0,
     "upcoming_shows_count": 0,
   }
+  shows = db.session.query(Show).join(Artist).all()
 
-  for show in artist.shows:
+  for show in shows:
+    venue = db.session.query(Venue).get(show.venue_id)
     if (show.start_time > datetime.now()):
       data['upcoming_shows'].append({
-        "artist_id": show.venue_id,
-        "artist_name": show.venue.name,
-        "artist_image_link": show.venue.image_link,
+        "venue_id": venue.id,
+        "venue_name": venue.name,
+        "venue_image_link": venue.image_link,
         "start_time": format(show.start_time)
       })
       data['upcoming_shows_count'] += 1
     else:
       data['past_shows'].append({
-        "artist_id": show.venue_id,
-        "artist_name": show.venue.name,
-        "artist_image_link": show.venue.image_link,
+        "venue_id": venue.id,
+        "venue_name": venue.name,
+        "venue_image_link": venue.image_link,
         "start_time": format(show.start_time)
       })
       data['past_shows_count'] += 1
